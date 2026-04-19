@@ -91,7 +91,6 @@ export default function Pricing() {
   const [upgradeModal, setUpgradeModal] = useState<{ name: string, price: string } | null>(null);
 
   async function handleUpgrade(plan: typeof PLANS[0]) {
-    if (!plan.priceId) return;
     if (!user) { window.location.href = '/signup?redirect=pricing'; return; }
     setUpgradeModal({ name: plan.name, price: plan.price });
   }
