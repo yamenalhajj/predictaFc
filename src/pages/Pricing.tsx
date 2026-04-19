@@ -1,4 +1,5 @@
 import { Link } from 'react-router-dom';
+import { useState } from 'react';
 import { Check, X, Zap, BarChart3, Upload, Key, Star } from 'lucide-react';
 import RevealSection from '../components/RevealSection';
 import { useAuth } from '../context/AuthContext';
@@ -15,67 +16,67 @@ const PLANS: {
   color: string;
   features: { text: string; included: boolean }[];
 }[] = [
-  {
-    id: 'free',
-    name: 'Spectator',
-    price: '$0',
-    priceId: null,
-    tagline: 'Everything you need to follow the predictions.',
-    popular: false,
-    cta: 'Start Free — No Card Needed',
-    color: 'border-white/10',
-    features: [
-      { text: '5 custom predictions / day',            included: true  },
-      { text: 'Group stage predictions (72 matches)',  included: true  },
-      { text: 'Knockout bracket predictions',          included: true  },
-      { text: 'Team analytics & rankings',             included: true  },
-      { text: 'Custom data CSV upload',                included: false },
-      { text: 'AI predictions using your data',        included: false },
-      { text: 'API key access',                        included: false },
-      { text: 'Priority support',                      included: false },
-    ],
-  },
-  {
-    id: 'pro',
-    name: 'Analyst',
-    price: '$7',
-    priceId: import.meta.env.VITE_STRIPE_PRICE_PRO,
-    tagline: 'For fans who want to go deeper.',
-    popular: true,
-    cta: 'Get Analyst — $7/month',
-    color: 'border-gold/40',
-    features: [
-      { text: '75 custom predictions / day',           included: true  },
-      { text: 'Group stage predictions (72 matches)',  included: true  },
-      { text: 'Knockout bracket predictions',          included: true  },
-      { text: 'Team analytics & rankings',             included: true  },
-      { text: '1 CSV upload (up to 10 MB)',            included: true  },
-      { text: 'AI predictions using your data',        included: true  },
-      { text: 'API key access',                        included: false },
-      { text: 'Priority support',                      included: false },
-    ],
-  },
-  {
-    id: 'elite',
-    name: 'Scout',
-    price: '$15',
-    priceId: import.meta.env.VITE_STRIPE_PRICE_ELITE,
-    tagline: 'Full access for serious prediction makers.',
-    popular: false,
-    cta: 'Go Scout — $15/month',
-    color: 'border-white/20',
-    features: [
-      { text: 'Unlimited custom predictions',          included: true  },
-      { text: 'Group stage predictions (72 matches)',  included: true  },
-      { text: 'Knockout bracket predictions',          included: true  },
-      { text: 'Team analytics & rankings',             included: true  },
-      { text: '5 CSV uploads (up to 25 MB each)',      included: true  },
-      { text: 'AI predictions using your data',        included: true  },
-      { text: 'API key access',                        included: true  },
-      { text: 'Priority support',                      included: true  },
-    ],
-  },
-];
+    {
+      id: 'free',
+      name: 'Spectator',
+      price: '$0',
+      priceId: null,
+      tagline: 'Everything you need to follow the predictions.',
+      popular: false,
+      cta: 'Start Free — No Card Needed',
+      color: 'border-white/10',
+      features: [
+        { text: '5 custom predictions / day', included: true },
+        { text: 'Group stage predictions (72 matches)', included: true },
+        { text: 'Knockout bracket predictions', included: true },
+        { text: 'Team analytics & rankings', included: true },
+        { text: 'Custom data CSV upload', included: false },
+        { text: 'AI predictions using your data', included: false },
+        { text: 'API key access', included: false },
+        { text: 'Priority support', included: false },
+      ],
+    },
+    {
+      id: 'pro',
+      name: 'Analyst',
+      price: '$7',
+      priceId: import.meta.env.VITE_STRIPE_PRICE_PRO,
+      tagline: 'For fans who want to go deeper.',
+      popular: true,
+      cta: 'Get Analyst — $7/month',
+      color: 'border-gold/40',
+      features: [
+        { text: '75 custom predictions / day', included: true },
+        { text: 'Group stage predictions (72 matches)', included: true },
+        { text: 'Knockout bracket predictions', included: true },
+        { text: 'Team analytics & rankings', included: true },
+        { text: '1 CSV upload (up to 10 MB)', included: true },
+        { text: 'AI predictions using your data', included: true },
+        { text: 'API key access', included: false },
+        { text: 'Priority support', included: false },
+      ],
+    },
+    {
+      id: 'elite',
+      name: 'Scout',
+      price: '$15',
+      priceId: import.meta.env.VITE_STRIPE_PRICE_ELITE,
+      tagline: 'Full access for serious prediction makers.',
+      popular: false,
+      cta: 'Go Scout — $15/month',
+      color: 'border-white/20',
+      features: [
+        { text: 'Unlimited custom predictions', included: true },
+        { text: 'Group stage predictions (72 matches)', included: true },
+        { text: 'Knockout bracket predictions', included: true },
+        { text: 'Team analytics & rankings', included: true },
+        { text: '5 CSV uploads (up to 25 MB each)', included: true },
+        { text: 'AI predictions using your data', included: true },
+        { text: 'API key access', included: true },
+        { text: 'Priority support', included: true },
+      ],
+    },
+  ];
 
 const FAQ = [
   { q: 'What counts as a custom prediction?', a: 'Any time you pick two teams and run a prediction on the /predict page. Group stage and knockout views are pre-computed and don\'t count against your daily limit.' },
@@ -87,19 +88,12 @@ const FAQ = [
 
 export default function Pricing() {
   const { user, tier } = useAuth();
+  const [upgradeModal, setUpgradeModal] = useState<{ name: string, price: string } | null>(null);
 
-  async function handleUpgrade(priceId: string | null) {
-    if (!priceId) return;
+  async function handleUpgrade(plan: typeof PLANS[0]) {
+    if (!plan.priceId) return;
     if (!user) { window.location.href = '/signup?redirect=pricing'; return; }
-
-    const BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : 'https://predictafc-2.onrender.com');
-    const res = await fetch(`${BASE}/create_checkout_session`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ price_id: priceId, user_id: user.id, email: user.email }),
-    });
-    const { url } = await res.json();
-    if (url) window.location.href = url;
+    setUpgradeModal({ name: plan.name, price: plan.price });
   }
 
   async function handlePortal() {
@@ -180,7 +174,7 @@ export default function Pricing() {
                     </Link>
                   ) : (
                     <button
-                      onClick={() => handleUpgrade(plan.priceId)}
+                      onClick={() => handleUpgrade(plan)}
                       className={`w-full py-3 rounded-xl text-sm font-heading font-semibold transition-all cursor-pointer ${plan.popular ? 'bg-gold text-black hover:bg-gold-light' : 'border border-white/20 text-white hover:border-white/40 hover:bg-white/5'}`}
                     >
                       {plan.cta}
@@ -197,10 +191,10 @@ export default function Pricing() {
           <h2 className="font-heading text-2xl font-bold text-white mb-8 text-center">What's included in every plan</h2>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: Zap,      title: 'AI Match Predictions',  desc: 'Predicted scores, win/draw/loss probabilities, and a calibrated confidence score for any matchup.' },
-              { icon: BarChart3, title: 'Full Tournament View',  desc: 'All 72 group stage matches and the complete 5-round knockout bracket — predicted by the model.' },
-              { icon: Upload,   title: 'Custom Data Upload',     desc: 'Upload your own match results CSV. Your data is merged with 47,000+ historical matches. Pro+ only.' },
-              { icon: Key,      title: 'API Access',             desc: 'Programmatic access to all prediction endpoints. Build integrations or automate analysis. Scout only.' },
+              { icon: Zap, title: 'AI Match Predictions', desc: 'Predicted scores, win/draw/loss probabilities, and a calibrated confidence score for any matchup.' },
+              { icon: BarChart3, title: 'Full Tournament View', desc: 'All 72 group stage matches and the complete 5-round knockout bracket — predicted by the model.' },
+              { icon: Upload, title: 'Custom Data Upload', desc: 'Upload your own match results CSV. Your data is merged with 47,000+ historical matches. Pro+ only.' },
+              { icon: Key, title: 'API Access', desc: 'Programmatic access to all prediction endpoints. Build integrations or automate analysis. Scout only.' },
             ].map(({ icon: Icon, title, desc }) => (
               <div key={title} className="glass-card p-5">
                 <div className="w-9 h-9 rounded-lg bg-gold/10 border border-gold/15 flex items-center justify-center mb-3">
@@ -241,6 +235,51 @@ export default function Pricing() {
         </RevealSection>
 
       </div>
+
+      {/* Manual Upgrade Modal */}
+      {upgradeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
+          <div className="glass-card max-w-md w-full p-8 relative animate-fade-in border-gold/30 shadow-[0_0_40px_rgba(234,179,8,0.15)]">
+            <button onClick={() => setUpgradeModal(null)} className="absolute top-4 right-4 text-slate-400 hover:text-white transition-colors cursor-pointer">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="w-12 h-12 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center mb-6">
+              <Star className="w-6 h-6 text-gold" />
+            </div>
+            <h3 className="font-heading text-2xl font-bold text-white mb-2">Upgrade to {upgradeModal.name}</h3>
+            <p className="text-slate-300 font-body text-sm leading-relaxed mb-6">
+              Automated card payments are temporarily disabled in your region. To unlock the <span className="text-white font-bold">{upgradeModal.name}</span> tier ({upgradeModal.price}/month), please complete your payment manually.
+            </p>
+
+            <div className="bg-white/5 border border-white/10 rounded-xl p-4 mb-6">
+              <p className="text-xs font-heading font-semibold text-slate-400 uppercase tracking-wider mb-3">Payment Options</p>
+              <ul className="space-y-3 text-sm font-body text-slate-300">
+                <li className="flex justify-between items-center">
+                  <span>PayPal:</span>
+                  <span className="text-white font-mono">Yaminabdullah71@gmail.com</span>
+                </li>
+                <li className="flex justify-between items-center">
+                  <span>Zain Cash (Jordan):</span>
+                  <span className="text-white font-mono">07999547709</span>
+                </li>
+                <li className="flex justify-between items-center">
+                  <span>CliQ (Jordan):</span>
+                  <span className="text-white font-mono">YMHB</span>
+                </li>
+              </ul>
+            </div>
+
+            <p className="text-xs text-slate-400 font-body mb-6 text-center">
+              After payment, please send an email to <span className="text-gold">upgrade@predictafc.com</span> with your payment screenshot and your account email (<span className="text-white">{user?.email}</span>). We will activate your tier within 12 hours.
+            </p>
+
+            <button onClick={() => setUpgradeModal(null)} className="btn-primary w-full justify-center py-3 cursor-pointer">
+              I Understand
+            </button>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
