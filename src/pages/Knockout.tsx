@@ -1,14 +1,25 @@
-import { useState } from 'react';
-import { Trophy, Zap } from 'lucide-react';
-import { KNOCKOUT_MATCHES, CHAMPION, getTeam, flagUrl, getPredictedWinner, getConfidenceLabel, Match } from '../data/worldcup';
+import { useState, useEffect } from 'react';
+import { Trophy, Zap, Loader2, AlertCircle } from 'lucide-react';
+import { getTeam, flagUrl, getConfidenceLabel, Match } from '../data/worldcup';
+import { fetchKnockout, ApiMatch } from '../api';
 import RevealSection from '../components/RevealSection';
+
+function toMatch(m: ApiMatch): Match {
+  return {
+    id: m.id, stage: m.stage, group: m.group, matchday: m.matchday,
+    homeTeam: m.homeTeam, awayTeam: m.awayTeam,
+    homeScore: m.homeScore, awayScore: m.awayScore,
+    probHomeWin: m.probHomeWin, probDraw: m.probDraw, probAwayWin: m.probAwayWin,
+    confidence: m.confidence, winner: m.winner ?? undefined, date: m.date,
+  };
+}
 
 // ─── BracketMatch card ────────────────────────────────────────────────────────
 function BracketMatch({ match, size = 'md' }: { match: Match; size?: 'sm' | 'md' | 'lg' }) {
   const [hovered, setHovered] = useState(false);
   const home   = getTeam(match.homeTeam);
   const away   = getTeam(match.awayTeam);
-  const winner = getPredictedWinner(match);
+  const winner = match.winner;
   const conf   = getConfidenceLabel(match.confidence);
   const homeWins = winner === match.homeTeam;
   const awayWins = winner === match.awayTeam;
@@ -67,16 +78,6 @@ function StageLabel({ label, gold = false }: { label: string; gold?: boolean }) 
   );
 }
 
-const r32    = KNOCKOUT_MATCHES.filter(m => m.stage === 'r32');
-const r16    = KNOCKOUT_MATCHES.filter(m => m.stage === 'r16');
-const qf     = KNOCKOUT_MATCHES.filter(m => m.stage === 'qf');
-const sf     = KNOCKOUT_MATCHES.filter(m => m.stage === 'sf');
-const final  = KNOCKOUT_MATCHES.find(m => m.stage === 'final')!;
-const third  = KNOCKOUT_MATCHES.find(m => m.stage === '3rd')!;
-
-const champTeam   = getTeam(CHAMPION);
-const finalistId  = CHAMPION === final.homeTeam ? final.awayTeam : final.homeTeam;
-
 const STAGE_MAP: Record<string, string> = {
   r32: 'Round of 32', r16: 'Round of 16', qf: 'Quarter-Finals', sf: 'Semi-Finals', '3rd': '3rd Place', final: 'Final',
 };
@@ -94,6 +95,35 @@ const ROUNDS: { key: ActiveRound; label: string }[] = [
 
 export default function Knockout() {
   const [activeRound, setActiveRound] = useState<ActiveRound>('all');
+  const [allMatches, setAllMatches] = useState<Match[]>([]);
+  const [champion, setChampion] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetchKnockout()
+      .then(data => {
+        setAllMatches(data.knockoutMatches.map(toMatch));
+        setChampion(data.champion);
+        setLoading(false);
+      })
+      .catch(e => {
+        setError(e.message ?? 'Failed to load predictions');
+        setLoading(false);
+      });
+  }, []);
+
+  const r32   = allMatches.filter(m => m.stage === 'r32');
+  const r16   = allMatches.filter(m => m.stage === 'r16');
+  const qf    = allMatches.filter(m => m.stage === 'qf');
+  const sf    = allMatches.filter(m => m.stage === 'sf');
+  const final = allMatches.find(m => m.stage === 'final');
+  const third = allMatches.find(m => m.stage === '3rd');
+
+  const champTeam  = champion ? getTeam(champion) : null;
+  const finalistId = final
+    ? (champion === final.homeTeam ? final.awayTeam : final.homeTeam)
+    : '';
 
   return (
     <div className="page-container">
@@ -111,191 +141,218 @@ export default function Knockout() {
           </p>
         </RevealSection>
 
-        {/* Champion */}
-        <RevealSection className="mb-10">
-          <div className="glass-card border-gold/20 p-6 flex flex-col sm:flex-row items-center gap-5 bg-gradient-to-r from-gold/8 to-transparent">
-            <div className="w-14 h-14 rounded-full bg-gold/15 border border-gold/30 flex items-center justify-center animate-pulse-gold shrink-0">
-              <Trophy className="w-7 h-7 text-gold" aria-hidden="true" />
-            </div>
-            <div className="text-center sm:text-left">
-              <p className="text-xs font-heading font-semibold text-gold uppercase tracking-wider mb-1">Predicted Champion — WC 2026</p>
-              <div className="flex items-center gap-3 mb-1">
-                {champTeam && (
-                  <img src={flagUrl(champTeam.flagCode, 80)} alt={`${champTeam.name} flag`} className="w-10 h-7 object-cover rounded" loading="lazy" />
-                )}
-                <span className="font-heading text-3xl font-bold text-white">{CHAMPION}</span>
-              </div>
-              <p className="text-sm text-slate-500 font-body">
-                Predicted to defeat {finalistId} in the final · {final.confidence} confidence
-              </p>
+        {/* Error */}
+        {error && (
+          <div className="glass-card border-red-500/20 p-4 mb-8 flex items-start gap-3">
+            <AlertCircle className="w-4 h-4 text-red-400 shrink-0 mt-0.5" aria-hidden="true" />
+            <div>
+              <p className="text-sm font-heading font-semibold text-red-400 mb-1">Could not load predictions</p>
+              <p className="text-xs text-slate-500">{error} — Start the API: <code className="text-gold">python backend/api.py</code></p>
             </div>
           </div>
-        </RevealSection>
-
-        {/* Round filter */}
-        <RevealSection className="mb-8">
-          <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by round">
-            {ROUNDS.map(({ key, label }) => (
-              <button key={key} role="tab" aria-selected={activeRound === key}
-                onClick={() => setActiveRound(key)}
-                className={`px-4 py-2 rounded-lg text-xs font-heading font-semibold transition-all duration-200 cursor-pointer ${
-                  activeRound === key ? 'bg-gold text-black' : 'glass-card text-slate-400 hover:text-white'
-                }`}
-              >
-                {label}
-              </button>
-            ))}
-          </div>
-        </RevealSection>
-
-        {/* ── Full Bracket (scroll) ── */}
-        {activeRound === 'all' && (
-          <RevealSection>
-            <div className="overflow-x-auto pb-6 -mx-4 px-4">
-              <div className="flex gap-6 items-start min-w-max py-2">
-
-                {/* R32 left half */}
-                <div className="flex flex-col gap-2.5">
-                  <StageLabel label="Round of 32" />
-                  {r32.slice(0, 8).map(m => <BracketMatch key={m.id} match={m} size="sm" />)}
-                </div>
-
-                <Connector tall />
-
-                {/* R16 left half */}
-                <div className="flex flex-col gap-2.5 mt-8">
-                  <StageLabel label="Round of 16" />
-                  {r16.slice(0, 4).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
-                </div>
-
-                <Connector />
-
-                {/* QF left */}
-                <div className="flex flex-col gap-2.5 mt-16">
-                  <StageLabel label="QF" />
-                  {qf.slice(0, 2).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
-                </div>
-
-                <Connector />
-
-                {/* SF */}
-                <div className="flex flex-col gap-2.5 mt-24">
-                  <StageLabel label="SF" />
-                  {sf.slice(0, 1).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
-                </div>
-
-                <Connector />
-
-                {/* Final */}
-                <div className="flex flex-col gap-2.5 mt-32">
-                  <StageLabel label="Final" gold />
-                  <BracketMatch match={final} size="lg" />
-                  <div className="mt-2">
-                    <StageLabel label="3rd Place" />
-                    <BracketMatch match={third} size="md" />
-                  </div>
-                </div>
-
-                <Connector />
-
-                {/* SF right */}
-                <div className="flex flex-col gap-2.5 mt-24">
-                  <StageLabel label="SF" />
-                  {sf.slice(1).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
-                </div>
-
-                <Connector />
-
-                {/* QF right */}
-                <div className="flex flex-col gap-2.5 mt-16">
-                  <StageLabel label="QF" />
-                  {qf.slice(2).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
-                </div>
-
-                <Connector />
-
-                {/* R16 right half */}
-                <div className="flex flex-col gap-2.5 mt-8">
-                  <StageLabel label="Round of 16" />
-                  {r16.slice(4).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
-                </div>
-
-                <Connector tall />
-
-                {/* R32 right half */}
-                <div className="flex flex-col gap-2.5">
-                  <StageLabel label="Round of 32" />
-                  {r32.slice(8).map(m => <BracketMatch key={m.id} match={m} size="sm" />)}
-                </div>
-              </div>
-            </div>
-          </RevealSection>
         )}
 
-        {/* ── Single round view ── */}
-        {activeRound !== 'all' && (() => {
-          const stageKey = activeRound === 'final' ? ['sf', '3rd', 'final'] : [activeRound];
-          const stageMatches = KNOCKOUT_MATCHES.filter(m => stageKey.includes(m.stage));
-          return (
-            <RevealSection>
-              <h2 className="font-heading text-xl font-bold text-white mb-6">{STAGE_MAP[activeRound] ?? activeRound}</h2>
-              {activeRound === 'final' && (
-                <div className="mb-8">
-                  <p className="text-xs font-heading text-slate-500 uppercase tracking-wider mb-3">Final</p>
-                  <BracketMatch match={final} size="lg" />
-                  <p className="text-xs font-heading text-slate-500 uppercase tracking-wider mt-5 mb-3">3rd Place</p>
-                  <BracketMatch match={third} size="md" />
-                </div>
-              )}
-              {activeRound !== 'final' && (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-                  {stageMatches.map(m => <BracketMatch key={m.id} match={m} size="lg" />)}
-                </div>
-              )}
-            </RevealSection>
-          );
-        })()}
-
-        {/* ── Probability table ── */}
-        <RevealSection className="mt-16">
-          <h2 className="font-heading text-2xl font-bold text-white mb-6">All Predictions Summary</h2>
-          <div className="space-y-2">
-            {KNOCKOUT_MATCHES.filter(m =>
-              activeRound === 'all' || m.stage === activeRound || (activeRound === 'final' && (m.stage === 'final' || m.stage === '3rd'))
-            ).map(match => {
-              const home   = getTeam(match.homeTeam);
-              const away   = getTeam(match.awayTeam);
-              const winner = getPredictedWinner(match);
-              const conf   = getConfidenceLabel(match.confidence);
-              return (
-                <div key={match.id} className="glass-card p-3 flex flex-col sm:flex-row sm:items-center gap-3">
-                  <span className="text-[10px] font-heading font-semibold text-slate-600 uppercase tracking-wider w-12 shrink-0">
-                    {STAGE_MAP[match.stage]?.split(' ').map(w => w[0]).join('')}
-                  </span>
-                  <div className="flex items-center gap-2 w-44 shrink-0">
-                    <img src={flagUrl(home?.flagCode ?? 'un', 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm shrink-0" />
-                    <span className="font-heading text-xs font-semibold text-white">{home?.shortName ?? match.homeTeam}</span>
-                    <span className="font-heading text-xs font-bold text-white tabular-nums">{match.homeScore}:{match.awayScore}</span>
-                    <span className="font-heading text-xs font-semibold text-white">{away?.shortName ?? match.awayTeam}</span>
-                    <img src={flagUrl(away?.flagCode ?? 'un', 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm shrink-0" />
-                  </div>
-                  <div className="flex-1 flex items-center gap-2">
-                    <div className="flex-1 flex rounded-full overflow-hidden h-1.5 gap-px">
-                      <div className="bg-green-500" style={{ width:`${match.probHomeWin}%` }} />
-                      <div className="bg-blue-500"  style={{ width:`${match.probAwayWin}%` }} />
-                    </div>
-                    <span className="text-[10px] font-heading text-green-400 tabular-nums">{match.probHomeWin}%</span>
-                    <span className="text-[10px] font-heading text-blue-400 tabular-nums">{match.probAwayWin}%</span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="win-badge text-[10px]">{winner}</span>
-                    <span className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${conf.color}`}>{conf.label}</span>
-                  </div>
-                </div>
-              );
-            })}
+        {/* Loading */}
+        {loading && (
+          <div className="glass-card p-12 text-center mb-8">
+            <Loader2 className="w-8 h-8 text-gold animate-spin mx-auto mb-3" aria-hidden="true" />
+            <p className="text-slate-500 font-body text-sm">Simulating full knockout bracket…</p>
           </div>
-        </RevealSection>
+        )}
+
+        {!loading && !error && champion && (
+          <>
+            {/* Champion */}
+            <RevealSection className="mb-10">
+              <div className="glass-card border-gold/20 p-6 flex flex-col sm:flex-row items-center gap-5 bg-gradient-to-r from-gold/8 to-transparent">
+                <div className="w-14 h-14 rounded-full bg-gold/15 border border-gold/30 flex items-center justify-center animate-pulse-gold shrink-0">
+                  <Trophy className="w-7 h-7 text-gold" aria-hidden="true" />
+                </div>
+                <div className="text-center sm:text-left">
+                  <p className="text-xs font-heading font-semibold text-gold uppercase tracking-wider mb-1">Predicted Champion — WC 2026</p>
+                  <div className="flex items-center gap-3 mb-1">
+                    {champTeam && (
+                      <img src={flagUrl(champTeam.flagCode, 80)} alt={`${champTeam.name} flag`} className="w-10 h-7 object-cover rounded" loading="lazy" />
+                    )}
+                    <span className="font-heading text-3xl font-bold text-white">{champion}</span>
+                  </div>
+                  {final && (
+                    <p className="text-sm text-slate-500 font-body">
+                      Predicted to defeat {finalistId} in the final · {final.confidence} confidence
+                    </p>
+                  )}
+                </div>
+              </div>
+            </RevealSection>
+
+            {/* Round filter */}
+            <RevealSection className="mb-8">
+              <div className="flex flex-wrap gap-2" role="tablist" aria-label="Filter by round">
+                {ROUNDS.map(({ key, label }) => (
+                  <button key={key} role="tab" aria-selected={activeRound === key}
+                    onClick={() => setActiveRound(key)}
+                    className={`px-4 py-2 rounded-lg text-xs font-heading font-semibold transition-all duration-200 cursor-pointer ${
+                      activeRound === key ? 'bg-gold text-black' : 'glass-card text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </RevealSection>
+
+            {/* ── Full Bracket (scroll) ── */}
+            {activeRound === 'all' && (
+              <RevealSection>
+                <div className="overflow-x-auto pb-6 -mx-4 px-4">
+                  <div className="flex gap-6 items-start min-w-max py-2">
+
+                    {/* R32 left half */}
+                    <div className="flex flex-col gap-2.5">
+                      <StageLabel label="Round of 32" />
+                      {r32.slice(0, 8).map(m => <BracketMatch key={m.id} match={m} size="sm" />)}
+                    </div>
+
+                    <Connector tall />
+
+                    {/* R16 left half */}
+                    <div className="flex flex-col gap-2.5 mt-8">
+                      <StageLabel label="Round of 16" />
+                      {r16.slice(0, 4).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
+                    </div>
+
+                    <Connector />
+
+                    {/* QF left */}
+                    <div className="flex flex-col gap-2.5 mt-16">
+                      <StageLabel label="QF" />
+                      {qf.slice(0, 2).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
+                    </div>
+
+                    <Connector />
+
+                    {/* SF */}
+                    <div className="flex flex-col gap-2.5 mt-24">
+                      <StageLabel label="SF" />
+                      {sf.slice(0, 1).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
+                    </div>
+
+                    <Connector />
+
+                    {/* Final */}
+                    <div className="flex flex-col gap-2.5 mt-32">
+                      <StageLabel label="Final" gold />
+                      {final && <BracketMatch match={final} size="lg" />}
+                      {third && (
+                        <div className="mt-2">
+                          <StageLabel label="3rd Place" />
+                          <BracketMatch match={third} size="md" />
+                        </div>
+                      )}
+                    </div>
+
+                    <Connector />
+
+                    {/* SF right */}
+                    <div className="flex flex-col gap-2.5 mt-24">
+                      <StageLabel label="SF" />
+                      {sf.slice(1).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
+                    </div>
+
+                    <Connector />
+
+                    {/* QF right */}
+                    <div className="flex flex-col gap-2.5 mt-16">
+                      <StageLabel label="QF" />
+                      {qf.slice(2).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
+                    </div>
+
+                    <Connector />
+
+                    {/* R16 right half */}
+                    <div className="flex flex-col gap-2.5 mt-8">
+                      <StageLabel label="Round of 16" />
+                      {r16.slice(4).map(m => <BracketMatch key={m.id} match={m} size="md" />)}
+                    </div>
+
+                    <Connector tall />
+
+                    {/* R32 right half */}
+                    <div className="flex flex-col gap-2.5">
+                      <StageLabel label="Round of 32" />
+                      {r32.slice(8).map(m => <BracketMatch key={m.id} match={m} size="sm" />)}
+                    </div>
+                  </div>
+                </div>
+              </RevealSection>
+            )}
+
+            {/* ── Single round view ── */}
+            {activeRound !== 'all' && (() => {
+              const stageKey = activeRound === 'final' ? ['sf', '3rd', 'final'] : [activeRound];
+              const stageMatches = allMatches.filter(m => stageKey.includes(m.stage));
+              return (
+                <RevealSection>
+                  <h2 className="font-heading text-xl font-bold text-white mb-6">{STAGE_MAP[activeRound] ?? activeRound}</h2>
+                  {activeRound === 'final' && (
+                    <div className="mb-8">
+                      <p className="text-xs font-heading text-slate-500 uppercase tracking-wider mb-3">Final</p>
+                      {final && <BracketMatch match={final} size="lg" />}
+                      <p className="text-xs font-heading text-slate-500 uppercase tracking-wider mt-5 mb-3">3rd Place</p>
+                      {third && <BracketMatch match={third} size="md" />}
+                    </div>
+                  )}
+                  {activeRound !== 'final' && (
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+                      {stageMatches.map(m => <BracketMatch key={m.id} match={m} size="lg" />)}
+                    </div>
+                  )}
+                </RevealSection>
+              );
+            })()}
+
+            {/* ── Probability table ── */}
+            <RevealSection className="mt-16">
+              <h2 className="font-heading text-2xl font-bold text-white mb-6">All Predictions Summary</h2>
+              <div className="space-y-2">
+                {allMatches.filter(m =>
+                  activeRound === 'all' || m.stage === activeRound || (activeRound === 'final' && (m.stage === 'final' || m.stage === '3rd'))
+                ).map(match => {
+                  const home   = getTeam(match.homeTeam);
+                  const away   = getTeam(match.awayTeam);
+                  const winner = match.winner;
+                  const conf   = getConfidenceLabel(match.confidence);
+                  return (
+                    <div key={match.id} className="glass-card p-3 flex flex-col sm:flex-row sm:items-center gap-3">
+                      <span className="text-[10px] font-heading font-semibold text-slate-600 uppercase tracking-wider w-12 shrink-0">
+                        {STAGE_MAP[match.stage]?.split(' ').map(w => w[0]).join('')}
+                      </span>
+                      <div className="flex items-center gap-2 w-44 shrink-0">
+                        <img src={flagUrl(home?.flagCode ?? 'un', 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm shrink-0" />
+                        <span className="font-heading text-xs font-semibold text-white">{home?.shortName ?? match.homeTeam}</span>
+                        <span className="font-heading text-xs font-bold text-white tabular-nums">{match.homeScore}:{match.awayScore}</span>
+                        <span className="font-heading text-xs font-semibold text-white">{away?.shortName ?? match.awayTeam}</span>
+                        <img src={flagUrl(away?.flagCode ?? 'un', 40)} alt="" className="w-5 h-3.5 object-cover rounded-sm shrink-0" />
+                      </div>
+                      <div className="flex-1 flex items-center gap-2">
+                        <div className="flex-1 flex rounded-full overflow-hidden h-1.5 gap-px">
+                          <div className="bg-green-500" style={{ width:`${match.probHomeWin}%` }} />
+                          <div className="bg-blue-500"  style={{ width:`${match.probAwayWin}%` }} />
+                        </div>
+                        <span className="text-[10px] font-heading text-green-400 tabular-nums">{match.probHomeWin}%</span>
+                        <span className="text-[10px] font-heading text-blue-400 tabular-nums">{match.probAwayWin}%</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="win-badge text-[10px]">{winner}</span>
+                        <span className={`text-[10px] font-heading px-2 py-0.5 rounded-full border ${conf.color}`}>{conf.label}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </RevealSection>
+          </>
+        )}
       </div>
     </div>
   );
