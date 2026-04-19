@@ -21,6 +21,15 @@ RESULTS_URL = (
 )
 
 # ── Team-name normalisation ───────────────────────────────────────────────────
+# Exclude multi-sport events that use U23/age-restricted squads, not full senior national teams
+_EXCLUDE_TOURNAMENTS = {
+    "Asian Games",
+    "Southeast Asian Games",
+    "South Pacific Games",
+    "Island Games",
+    "Muratti Vase",
+}
+
 _NAME_MAP = {
     "Iran":                 "IR Iran",
     "Ivory Coast":          "Côte d'Ivoire",
@@ -83,8 +92,14 @@ def load_data(min_year: int = 1990) -> pd.DataFrame:
     df["home_team"] = df["home_team"].apply(_normalise)
     df["away_team"] = df["away_team"].apply(_normalise)
 
+    # Remove non-senior international competitions (age-restricted multi-sport events)
+    df = df[~df["tournament"].isin(_EXCLUDE_TOURNAMENTS)]
+
     # Filter to modern era
-    df = df[df["date"].dt.year >= min_year].copy()
+    if min_year > 0:
+        df = df[df["date"].dt.year >= min_year].copy()
+    else:
+        df = df.copy()
 
     # Ensure numeric scores
     df["home_score"] = pd.to_numeric(df["home_score"], errors="coerce")

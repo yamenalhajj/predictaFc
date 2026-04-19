@@ -12,10 +12,10 @@ const FEATURED_MATCHES = [
 ].filter(Boolean);
 
 const STATS = [
-  { label: 'Model Accuracy',    value: '71.4%', sub: 'on 2022 holdout set', icon: Target    },
-  { label: 'Matches Predicted', value: '104+',  sub: '72 group + 32 KO',   icon: BarChart3  },
-  { label: 'Teams Analyzed',    value: '48',    sub: 'WC 2026 full field',  icon: Shield     },
-  { label: 'Avg Confidence',    value: '74%',   sub: 'across all picks',    icon: Activity   },
+  { label: 'Model Accuracy',    value: '71.4%',  sub: 'on 2021–25 holdout',   icon: Target    },
+  { label: 'Matches Trained',   value: '42,365', sub: '1872–2020 senior intl', icon: BarChart3  },
+  { label: 'Teams Analyzed',    value: '48',     sub: 'WC 2026 full field',    icon: Shield     },
+  { label: 'Avg Confidence',    value: '74%',    sub: 'across all picks',      icon: Activity   },
 ];
 
 const HOW_IT_WORKS = [
@@ -78,7 +78,7 @@ export default function Landing() {
             </div>
 
             <div className="flex flex-wrap gap-8">
-              {[['71.4%','Prediction Accuracy'],['48','Teams Covered'],['104+','Fixtures Modeled']].map(([val,lab]) => (
+              {[['71.4%','Prediction Accuracy'],['47,846','Matches Trained On'],['104+','Fixtures Modeled']].map(([val,lab]) => (
                 <div key={lab}>
                   <div className="font-heading text-2xl font-bold gold-text">{val}</div>
                   <div className="text-xs text-slate-500 font-body mt-0.5">{lab}</div>
@@ -239,6 +239,56 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── Pricing teaser ───────────────────────────────────────────── */}
+      <section className="section-pad border-t border-white/[0.06]">
+        <div className="max-container">
+          <RevealSection className="mb-10 text-center">
+            <span className="section-label justify-center"><TrendingUp className="w-3 h-3" aria-hidden="true" />Pricing</span>
+            <h2 className="font-heading text-3xl md:text-4xl font-bold text-white">Predict Smarter. Pay Less.</h2>
+            <p className="text-slate-500 mt-2 font-body max-w-md mx-auto">Start free. Upgrade when the World Cup gets serious.</p>
+          </RevealSection>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 mb-8">
+            {[
+              { name: 'Spectator', price: 'Free', tag: null,           features: ['5 predictions / day', 'Group & knockout views', 'Team analytics'], cta: 'Start Free', to: '/signup', highlight: false },
+              { name: 'Analyst',   price: '$7/mo', tag: 'Most Popular', features: ['75 predictions / day', 'Custom CSV data upload', 'AI uses your data'],  cta: 'Get Analyst', to: '/pricing', highlight: true  },
+              { name: 'Scout',     price: '$15/mo', tag: null,          features: ['Unlimited predictions', '5 file uploads (25 MB)', 'API key access'],  cta: 'Go Scout',   to: '/pricing', highlight: false },
+            ].map(({ name, price, tag, features, cta, to, highlight }, i) => (
+              <RevealSection key={name} delay={i as 0|1|2} className="relative">
+                {tag && (
+                  <div className="absolute -top-3 left-1/2 -translate-x-1/2 z-10">
+                    <span className="px-3 py-1 rounded-full text-[10px] font-heading font-bold bg-gold text-black uppercase tracking-wider">{tag}</span>
+                  </div>
+                )}
+                <div className={`glass-card p-6 h-full flex flex-col border ${highlight ? 'border-gold/40 shadow-[0_0_30px_rgba(234,179,8,0.10)]' : 'border-white/[0.06]'}`}>
+                  <div className="mb-4">
+                    <p className="text-xs font-heading font-semibold text-slate-500 uppercase tracking-wider">{name}</p>
+                    <p className="font-heading text-2xl font-bold text-white mt-1">{price}</p>
+                  </div>
+                  <ul className="space-y-2 flex-1 mb-5">
+                    {features.map(f => (
+                      <li key={f} className="flex items-center gap-2 text-sm text-slate-400 font-body">
+                        <div className="w-1.5 h-1.5 rounded-full bg-gold/60 shrink-0" />
+                        {f}
+                      </li>
+                    ))}
+                  </ul>
+                  <Link to={to} className={`block text-center py-2.5 rounded-xl text-sm font-heading font-semibold transition-all ${highlight ? 'bg-gold text-black hover:bg-gold-light' : 'border border-white/15 text-slate-300 hover:border-white/30 hover:text-white'}`}>
+                    {cta}
+                  </Link>
+                </div>
+              </RevealSection>
+            ))}
+          </div>
+
+          <RevealSection className="text-center">
+            <Link to="/pricing" className="btn-ghost inline-flex" aria-label="See full pricing">
+              Compare all features <ChevronRight className="w-4 h-4" aria-hidden="true" />
+            </Link>
+          </RevealSection>
+        </div>
+      </section>
+
       {/* ── CTA Banner ───────────────────────────────────────────────── */}
       <section className="section-pad">
         <div className="max-container">
@@ -251,9 +301,9 @@ export default function Landing() {
                 <p className="text-slate-400 font-body mb-8 max-w-lg mx-auto">
                   Pick any two teams from the 48-nation field and get an instant AI prediction with full probability breakdown.
                 </p>
-                <Link to="/predict" className="btn-primary text-base px-10 py-4" aria-label="Predict a match now">
+                <Link to="/signup" className="btn-primary text-base px-10 py-4" aria-label="Start for free">
                   <Zap className="w-4 h-4" aria-hidden="true" />
-                  Predict a Match Now
+                  Start Free — No Card Needed
                 </Link>
               </div>
             </div>

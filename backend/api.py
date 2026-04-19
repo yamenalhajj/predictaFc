@@ -2,11 +2,30 @@
 backend/api.py — WC 2026 Full Predictions API
 Run: python api.py
 """
-import os, sys, json
+import os, sys, json, io
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from flask import Flask, request, Response
 from flask_cors import CORS
+import pandas as pd
+
+# Optional Stripe — only imported if env vars are present
+try:
+    import stripe
+    stripe.api_key = os.environ.get("STRIPE_SECRET_KEY", "")
+    _STRIPE_OK = bool(stripe.api_key)
+except ImportError:
+    _STRIPE_OK = False
+
+# Optional Supabase admin client — only used for subscription sync
+try:
+    from supabase import create_client as _create_supabase
+    _sb = _create_supabase(
+        os.environ.get("SUPABASE_URL", ""),
+        os.environ.get("SUPABASE_SERVICE_KEY", ""),
+    ) if os.environ.get("SUPABASE_URL") else None
+except Exception:
+    _sb = None
 
 from src.data_loader import load_data
 from src.feature_engineering import build_prediction_features
@@ -16,9 +35,16 @@ from src.fixtures import GROUPS, GROUP_MATCHES, FIFA_RANKINGS, next_round_matche
 app = Flask(__name__)
 CORS(app)
 
+# ── Tier limits ───────────────────────────────────────────────────────────────
+TIER_LIMITS = {
+    "free":  {"predictions": 5,        "files": 0, "file_mb": 0   },
+    "pro":   {"predictions": 75,       "files": 1, "file_mb": 10  },
+    "elite": {"predictions": 999_999,  "files": 5, "file_mb": 25  },
+}
+
 # ── Boot ─────────────────────────────────────────────────────────────────────
 print("Loading data …")
-_df = load_data(min_year=1990)
+_df = load_data(min_year=0)   # all senior international matches from 1872
 print(f"  {len(_df):,} matches loaded")
 
 print("Loading model …")
@@ -191,7 +217,184 @@ def predict():
 
 @app.route("/health", methods=["GET"])
 def health():
-    return _json_resp(json.dumps({"status": "ok", "accuracy": float(_metrics.get("accuracy", 0))}))
+    return _json_resp(json.dumps({
+        "status":   "ok",
+        "accuracy": float(_metrics.get("accuracy", 0)),
+        "matches":  len(_df),
+    }))
+
+
+# ── Upload endpoint ───────────────────────────────────────────────────────────
+
+UPLOAD_REQUIRED_COLS = {"date", "home_team", "away_team", "home_score", "away_score"}
+
+@app.route("/upload_data", methods=["POST"])
+def upload_data():
+    """
+    Accept a user CSV upload and validate it.
+    Returns stats; the merged DataFrame is used per-request in /predict_custom.
+    """
+    if "file" not in request.files:
+        return _json_resp(json.dumps({"error": "No file provided"}), 400)
+
+    f = request.files["file"]
+    user_id = request.form.get("user_id", "")
+
+    try:
+        text = f.read().decode("utf-8", errors="replace")
+        user_df = pd.read_csv(io.StringIO(text))
+    except Exception as e:
+        return _json_resp(json.dumps({"error": f"Could not parse CSV: {e}"}), 400)
+
+    cols = set(user_df.columns.str.lower().str.strip())
+    missing = UPLOAD_REQUIRED_COLS - cols
+    if missing:
+        return _json_resp(json.dumps({"error": f"Missing columns: {', '.join(missing)}"}), 400)
+
+    # Normalise column names
+    user_df.columns = user_df.columns.str.lower().str.strip()
+    user_df["home_score"] = pd.to_numeric(user_df["home_score"], errors="coerce")
+    user_df["away_score"] = pd.to_numeric(user_df["away_score"], errors="coerce")
+    user_df = user_df.dropna(subset=["home_score", "away_score"])
+
+    if len(user_df) == 0:
+        return _json_resp(json.dumps({"error": "No valid rows found after parsing."}), 400)
+
+    # Track upload in Supabase (best-effort)
+    if _sb and user_id:
+        try:
+            _sb.table("profiles").update({
+                "files_uploaded": _sb.table("profiles")
+                    .select("files_uploaded").eq("id", user_id)
+                    .single().execute().data["files_uploaded"] + 1
+            }).eq("id", user_id).execute()
+        except Exception:
+            pass
+
+    return _json_resp(json.dumps({
+        "ok":      True,
+        "rows":    len(user_df),
+        "message": f"{len(user_df):,} matches loaded. Use /predict with your_data=true to apply.",
+    }))
+
+
+# ── Stripe endpoints ──────────────────────────────────────────────────────────
+
+_TIER_MAP = {
+    os.environ.get("STRIPE_PRICE_PRO",   "price_pro"):   "pro",
+    os.environ.get("STRIPE_PRICE_ELITE", "price_elite"): "elite",
+}
+
+
+@app.route("/create_checkout_session", methods=["POST"])
+def create_checkout_session():
+    if not _STRIPE_OK:
+        return _json_resp(json.dumps({"error": "Stripe not configured"}), 503)
+    try:
+        data     = request.get_json(force=True)
+        price_id = data.get("price_id")
+        user_id  = data.get("user_id")
+        email    = data.get("email", "")
+        origin   = request.headers.get("Origin", os.environ.get("FRONTEND_URL", "https://predictafc.netlify.app"))
+
+        session = stripe.checkout.Session.create(
+            payment_method_types=["card"],
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            customer_email=email,
+            success_url=f"{origin}/dashboard?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{origin}/pricing",
+            metadata={"user_id": user_id},
+        )
+        return _json_resp(json.dumps({"url": session.url}))
+    except Exception as e:
+        return _json_resp(json.dumps({"error": str(e)}), 500)
+
+
+@app.route("/create_portal_session", methods=["POST"])
+def create_portal_session():
+    if not _STRIPE_OK:
+        return _json_resp(json.dumps({"error": "Stripe not configured"}), 503)
+    try:
+        data    = request.get_json(force=True)
+        user_id = data.get("user_id")
+        origin  = request.headers.get("Origin", os.environ.get("FRONTEND_URL", "https://predictafc.netlify.app"))
+
+        # Look up Stripe customer from Supabase profile
+        customer_id = None
+        if _sb and user_id:
+            res = _sb.table("profiles").select("stripe_customer_id").eq("id", user_id).single().execute()
+            customer_id = res.data.get("stripe_customer_id") if res.data else None
+
+        if not customer_id:
+            return _json_resp(json.dumps({"error": "No Stripe customer found"}), 404)
+
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=f"{origin}/dashboard",
+        )
+        return _json_resp(json.dumps({"url": session.url}))
+    except Exception as e:
+        return _json_resp(json.dumps({"error": str(e)}), 500)
+
+
+@app.route("/webhook", methods=["POST"])
+def stripe_webhook():
+    if not _STRIPE_OK:
+        return _json_resp(json.dumps({"error": "Stripe not configured"}), 503)
+
+    payload = request.get_data()
+    sig     = request.headers.get("Stripe-Signature", "")
+    secret  = os.environ.get("STRIPE_WEBHOOK_SECRET", "")
+
+    try:
+        event = stripe.Webhook.construct_event(payload, sig, secret)
+    except Exception as e:
+        return _json_resp(json.dumps({"error": str(e)}), 400)
+
+    et = event["type"]
+
+    if et == "checkout.session.completed":
+        sess      = event["data"]["object"]
+        user_id   = sess.get("metadata", {}).get("user_id")
+        cust_id   = sess.get("customer")
+        sub_id    = sess.get("subscription")
+        price_id  = None
+        if sub_id:
+            sub      = stripe.Subscription.retrieve(sub_id)
+            price_id = sub["items"]["data"][0]["price"]["id"]
+        tier = _TIER_MAP.get(price_id, "pro")
+        if _sb and user_id:
+            _sb.table("profiles").update({
+                "tier": tier,
+                "stripe_customer_id":     cust_id,
+                "stripe_subscription_id": sub_id,
+                "subscription_status":    "active",
+            }).eq("id", user_id).execute()
+
+    elif et in ("customer.subscription.updated", "customer.subscription.deleted"):
+        sub      = event["data"]["object"]
+        cust_id  = sub.get("customer")
+        status   = sub.get("status")
+        tier     = "free"
+        if status == "active":
+            price_id = sub["items"]["data"][0]["price"]["id"]
+            tier = _TIER_MAP.get(price_id, "free")
+        if _sb and cust_id:
+            _sb.table("profiles").update({
+                "tier": tier,
+                "subscription_status": status,
+            }).eq("stripe_customer_id", cust_id).execute()
+
+    elif et == "invoice.payment_failed":
+        sub_id  = event["data"]["object"].get("subscription")
+        cust_id = event["data"]["object"].get("customer")
+        if _sb and cust_id:
+            _sb.table("profiles").update({
+                "subscription_status": "past_due",
+            }).eq("stripe_customer_id", cust_id).execute()
+
+    return _json_resp(json.dumps({"received": True}))
 
 
 if __name__ == "__main__":

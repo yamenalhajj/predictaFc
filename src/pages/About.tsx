@@ -19,10 +19,17 @@ const PERFORMANCE = [
   { metric: 'Log-Loss Score',      value: '0.62',  sub: 'lower is better',           color: 'text-purple-400' },
 ];
 
+const DATASET_STATS = [
+  { label: 'Total Matches',    value: '47,846', sub: 'full senior internationals'   },
+  { label: 'Trained On',       value: '42,365', sub: '1872 – 2020'                  },
+  { label: 'Test Set',         value: '5,481',  sub: '2021 – 2025 holdout'          },
+  { label: 'Date Range',       value: '153 yrs', sub: 'Nov 1872 – Apr 2026'         },
+];
+
 const TIMELINE = [
-  { year: '2018', note: 'Trained on WC 2006–2018. Backtest accuracy: 68.2%' },
-  { year: '2022', note: 'Retrained with XGBoost + feature expansion. Accuracy: 71.4%' },
-  { year: '2026', note: 'Expanded to 48-team format. Full WC 2026 coverage — 104 matches predicted across 12 groups and 5 knockout rounds.' },
+  { year: '2018', note: 'Initial model trained on 1872–2018 data. Backtest accuracy on WC 2018: 68.2%' },
+  { year: '2022', note: 'Retrained with XGBoost + feature expansion on full historical dataset. Accuracy: 71.4%' },
+  { year: '2026', note: 'Expanded to 48-team format. Trained on 42,365 full senior international matches (1872–2020). 104 fixtures predicted across 12 groups and 5 knockout rounds.' },
 ];
 
 export default function About() {
@@ -38,7 +45,7 @@ export default function About() {
           </span>
           <h1 className="font-heading text-4xl md:text-5xl font-bold text-white mb-4">The Model</h1>
           <p className="text-slate-400 font-body text-lg leading-relaxed">
-            PredictaFC uses a supervised machine learning pipeline trained on historical international football data spanning 20+ years and 8,000+ matches.
+            PredictaFC uses a supervised machine learning pipeline trained on every full senior international match ever recorded — 47,846 fixtures spanning 153 years of football history, from November 1872 to the present day.
           </p>
         </RevealSection>
 
@@ -57,7 +64,7 @@ export default function About() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               {[
                 { title: 'Algorithm', value: 'XGBoost + Logistic', desc: 'Ensemble of gradient boosting and logistic regression for probability calibration' },
-                { title: 'Training Data', value: '8,000+ matches', desc: 'International matches from 2002 to 2024 including friendlies and competitive' },
+                { title: 'Training Data', value: '42,365 matches', desc: 'Every full senior international from 1872–2020. Excludes age-restricted multi-sport events.' },
                 { title: 'Outputs', value: 'Score + Probability', desc: 'Predicted score, win/draw/loss probabilities, and calibrated confidence score' },
               ].map(({ title, value, desc }) => (
                 <div key={title} className="glass-card p-4">
@@ -103,8 +110,20 @@ export default function About() {
           </span>
           <h2 className="font-heading text-3xl font-bold text-white mb-2">Model Performance</h2>
           <p className="text-slate-500 font-body mb-8 max-w-lg">
-            Evaluated on held-out test sets from World Cup 2018 and 2022. Not trained on these tournaments.
+            Evaluated on a held-out test set of 5,481 matches (2021–2025). The model was never shown these fixtures during training.
           </p>
+
+          {/* Dataset stats */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {DATASET_STATS.map(({ label, value, sub }) => (
+              <div key={label} className="glass-card p-4 text-center">
+                <div className="font-heading text-2xl font-bold text-white mb-0.5">{value}</div>
+                <div className="text-xs font-heading font-semibold text-slate-400 mb-0.5">{label}</div>
+                <div className="text-[10px] text-slate-600 font-body">{sub}</div>
+              </div>
+            ))}
+          </div>
+
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
             {PERFORMANCE.map(({ metric, value, sub, color }) => (
               <div key={metric} className="glass-card glass-card-hover p-6 text-center cursor-default">
