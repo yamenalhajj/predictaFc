@@ -27,7 +27,7 @@ export default function Dashboard() {
 
   async function handlePortal() {
     if (!user) return;
-    const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '/api';
+    const BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : 'https://predictafc-2.onrender.com');
     const res = await fetch(`${BASE}/create_portal_session`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

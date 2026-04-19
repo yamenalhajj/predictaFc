@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : '/api');
+const BASE = import.meta.env.VITE_API_URL ?? (import.meta.env.DEV ? 'http://localhost:8000' : 'https://predictafc-2.onrender.com');
 
 export interface ApiMatch {
   id: string;

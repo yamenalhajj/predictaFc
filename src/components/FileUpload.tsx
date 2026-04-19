@@ -65,7 +65,7 @@ export default function FileUpload({ tier, filesUsed, filesLimit, fileSizeLimitM
       formData.append('file', f);
       formData.append('user_id', userId);
 
-      const BASE = import.meta.env.DEV ? 'http://localhost:8000' : '/api';
+      const BASE = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : 'https://predictafc-2.onrender.com');
       const res = await fetch(`${BASE}/upload_data`, { method: 'POST', body: formData });
       const json = await res.json();
 

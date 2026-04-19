@@ -9,7 +9,8 @@ import StatBar from '../components/StatBar';
 import RevealSection from '../components/RevealSection';
 
 const TEAM_LIST = [...TEAMS].sort((a, b) => a.name.localeCompare(b.name));
-const API_URL = 'http://localhost:8000/predict';
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:8000' : 'https://predictafc-2.onrender.com');
+const API_URL = `${BASE_URL}/predict`;
 
 interface Prediction {
   homeScore: number;
