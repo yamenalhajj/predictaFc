@@ -1,12 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Trophy, Zap, Loader2, AlertCircle } from 'lucide-react';
-import { getTeam, flagUrl, getConfidenceLabel, Match } from '../data/worldcup';
+import { getTeam, flagUrl, getConfidenceLabel, Match, Stage } from '../data/worldcup';
 import { fetchKnockout, ApiMatch } from '../api';
 import RevealSection from '../components/RevealSection';
 
 function toMatch(m: ApiMatch): Match {
   return {
-    id: m.id, stage: m.stage, group: m.group, matchday: m.matchday,
+    id: m.id, stage: m.stage as Stage, group: m.group, matchday: m.matchday,
     homeTeam: m.homeTeam, awayTeam: m.awayTeam,
     homeScore: m.homeScore, awayScore: m.awayScore,
     probHomeWin: m.probHomeWin, probDraw: m.probDraw, probAwayWin: m.probAwayWin,

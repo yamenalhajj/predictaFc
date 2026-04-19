@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { BarChart3, Zap, Loader2, AlertCircle } from 'lucide-react';
-import { GROUPS, Match, Standing } from '../data/worldcup';
+import { GROUPS, Match, Standing, Stage } from '../data/worldcup';
 import { fetchGroupMatches, ApiMatch, ApiStanding } from '../api';
 import MatchCard from '../components/MatchCard';
 import GroupTable from '../components/GroupTable';
@@ -10,7 +10,7 @@ const GROUP_KEYS = Object.keys(GROUPS) as string[];
 
 function toMatch(m: ApiMatch): Match {
   return {
-    id: m.id, stage: 'group', group: m.group, matchday: m.matchday,
+    id: m.id, stage: m.stage as Stage, group: m.group, matchday: m.matchday,
     homeTeam: m.homeTeam, awayTeam: m.awayTeam,
     homeScore: m.homeScore, awayScore: m.awayScore,
     probHomeWin: m.probHomeWin, probDraw: m.probDraw, probAwayWin: m.probAwayWin,
