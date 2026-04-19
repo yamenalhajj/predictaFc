@@ -1,5 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Zap, Trophy, TrendingUp, RotateCcw, ChevronDown, Activity, AlertCircle } from 'lucide-react';
+import { Zap, Trophy, TrendingUp, RotateCcw, ChevronDown, Activity, AlertCircle, Lock } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import { useAuth } from '../context/AuthContext';
+import { supabase, TIER_LIMITS } from '../lib/supabase';
 import { TEAMS, Team, flagUrl, getConfidenceLabel } from '../data/worldcup';
 import ProbabilityBar from '../components/ProbabilityBar';
 import StatBar from '../components/StatBar';
@@ -88,6 +91,7 @@ function TeamSelector({ value, onChange, exclude, label }: {
 }
 
 export default function Predict() {
+  const { user, profile, tier, refreshProfile } = useAuth();
   const [homeTeam, setHomeTeam] = useState<Team | null>(TEAMS.find(t => t.name === 'Spain') ?? null);
   const [awayTeam, setAwayTeam] = useState<Team | null>(TEAMS.find(t => t.name === 'England') ?? null);
   const [result, setResult] = useState<Prediction | null>(null);
@@ -110,6 +114,16 @@ export default function Predict() {
         throw new Error(err.error ?? 'API error');
       }
       const data = await res.json();
+
+      // Increment usage if logged in
+      if (user && profile) {
+        await supabase
+          .from('profiles')
+          .update({ predictions_used_today: profile.predictions_used_today + 1 })
+          .eq('id', user.id);
+        await refreshProfile();
+      }
+
       setResult({
         homeScore:   data.homeScore,
         awayScore:   data.awayScore,
@@ -186,24 +200,36 @@ export default function Predict() {
             </div>
 
             <div className="mt-5 flex gap-3">
-              <button
-                onClick={run}
-                disabled={!homeTeam || !awayTeam || animating}
-                className="btn-primary flex-1 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
-                aria-label="Generate prediction"
-              >
-                {animating ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" aria-hidden="true" />
-                    Predicting…
-                  </>
-                ) : (
-                  <>
-                    <Zap className="w-4 h-4" aria-hidden="true" />
-                    Generate Prediction
-                  </>
-                )}
-              </button>
+              {!user ? (
+                <Link to="/login" className="btn-primary flex-1 justify-center bg-slate-800 hover:bg-slate-700 text-white border-none">
+                  <Lock className="w-4 h-4" aria-hidden="true" />
+                  Sign in to Predict
+                </Link>
+              ) : (profile && profile.predictions_used_today >= TIER_LIMITS[tier].predictions) ? (
+                <Link to="/pricing" className="btn-primary flex-1 justify-center bg-gold hover:bg-gold/90 text-black border-none">
+                  <Lock className="w-4 h-4" aria-hidden="true" />
+                  Daily Limit Reached — Upgrade
+                </Link>
+              ) : (
+                <button
+                  onClick={run}
+                  disabled={!homeTeam || !awayTeam || animating}
+                  className="btn-primary flex-1 justify-center disabled:opacity-40 disabled:cursor-not-allowed"
+                  aria-label="Generate prediction"
+                >
+                  {animating ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-black/30 border-t-black rounded-full animate-spin" aria-hidden="true" />
+                      Predicting…
+                    </>
+                  ) : (
+                    <>
+                      <Zap className="w-4 h-4" aria-hidden="true" />
+                      Generate Prediction
+                    </>
+                  )}
+                </button>
+              )}
               <button onClick={reset} className="btn-ghost px-4" aria-label="Reset prediction">Reset</button>
             </div>
           </RevealSection>
